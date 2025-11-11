@@ -153,7 +153,7 @@ void displayImage(const char* imageUrl) {
 
   // try PNG first (most common from TRMNL)
   Serial.println("Trying to load as PNG...");
-  success = canvas.drawPngUrl(imageUrl);
+  success = canvas.drawPngUrl(imageUrl, 0, 0);
 
   if (!success) {
     Serial.println("PNG load failed, trying BMP...");
@@ -185,18 +185,33 @@ bool downloadAndDisplayImage(const char* url) {
   http.setTimeout(30000);
 
   int code = http.GET();
+  Serial.printf("HTTP Response Code: %d\n", code);
+  
   if (code != HTTP_CODE_OK) {
     Serial.printf("HTTP GET failed, code: %d\n", code);
     http.end();
     return false;
   }
 
-  String contentType = http.header("Content-Type");
-  Serial.printf("Content-Type: %s\n", contentType.c_str());
+  // Debug: Print ALL headers
+  Serial.println("=== Response Headers ===");
+  Serial.printf("Header count: %d\n", http.headers());
+  for (int i = 0; i < http.headers(); i++) {
+    Serial.printf("%s: %s\n", http.headerName(i).c_str(), http.header(i).c_str());
+  }
+  Serial.println("=======================");
 
   int len = http.getSize();
-  if (len <= 0 || len > 200000) {  // max 200KB
-    Serial.printf("Invalid content length: %d\n", len);
+  Serial.printf("Content-Length from getSize(): %d\n", len);
+
+  if (len <= 0) {
+    Serial.println("Content-Length is 0 or unknown, trying to read anyway...");
+    // S3 should always provide Content-Length, but let's handle it
+    len = 200000; // Max size
+  }
+  
+  if (len > 200000) {
+    Serial.printf("Content too large: %d\n", len);
     http.end();
     return false;
   }
@@ -208,50 +223,67 @@ bool downloadAndDisplayImage(const char* url) {
     return false;
   }
 
+  // Use getString() instead of direct stream reading - more reliable
   WiFiClient* stream = http.getStreamPtr();
-  size_t bytesRead = stream->readBytes(buffer, len);
+  
+  size_t bytesRead = 0;
+  unsigned long startTime = millis();
+  
+  while (http.connected() && bytesRead < len) {
+    size_t available = stream->available();
+    
+    if (available) {
+      int c = stream->read();
+      if (c >= 0) {
+        buffer[bytesRead++] = (uint8_t)c;
+        
+        // Progress indicator every 10KB
+        if (bytesRead % 10240 == 0) {
+          Serial.printf("Downloaded: %d/%d bytes\n", bytesRead, len);
+        }
+      }
+    } else {
+      // Check for timeout
+      if (millis() - startTime > 30000) {
+        Serial.println("Timeout while reading stream");
+        break;
+      }
+      delay(1);
+    }
+  }
+  
   http.end();
 
-  if (bytesRead != len) {
-    Serial.printf("Read size mismatch: expected %d, got %d\n", len, bytesRead);
+  Serial.printf("Final bytes read: %d (expected: %d)\n", bytesRead, len);
+  
+  if (bytesRead < 100) {
+    Serial.println("Downloaded data too small to be valid image");
     free(buffer);
     return false;
   }
 
+  // Print magic bytes
+  Serial.print("Magic bytes: ");
+  for (int i = 0; i < min(16, (int)bytesRead); i++) {
+    Serial.printf("%02X ", buffer[i]);
+  }
+  Serial.println();
+
   bool success = false;
 
-  if (contentType.indexOf("png") != -1) {
-    Serial.println("Content-Type indicates PNG format");
+  // PNG: 0x89 0x50 0x4E 0x47
+  if (bytesRead >= 4 && buffer[0] == 0x89 && buffer[1] == 0x50 &&
+      buffer[2] == 0x4E && buffer[3] == 0x47) {
+    Serial.println("Detected PNG format");
     success = canvas.drawPng(buffer, bytesRead, 0, 0);
   }
-  else if (contentType.indexOf("bmp") != -1 || contentType.indexOf("bitmap") != -1) {
-    Serial.println("Content-Type indicates BMP format");
+  // BMP: 'BM'
+  else if (bytesRead >= 2 && buffer[0] == 'B' && buffer[1] == 'M') {
+    Serial.println("Detected BMP format");
     success = canvas.drawBmp(buffer, bytesRead, 0, 0);
   }
-
-  // fallback to magic byte detection
-  if (!success) {
-    Serial.println("Falling back to magic byte detection...");
-
-    // PNG: 0x89 0x50 0x4E 0x47
-    if (bytesRead >= 4 && buffer[0] == 0x89 && buffer[1] == 0x50 &&
-        buffer[2] == 0x4E && buffer[3] == 0x47) {
-      Serial.println("Detected PNG format by magic bytes");
-      success = canvas.drawPng(buffer, bytesRead, 0, 0);
-    }
-    // BMP: 'BM'
-    else if (bytesRead >= 2 && buffer[0] == 'B' && buffer[1] == 'M') {
-      Serial.println("Detected BMP format by magic bytes");
-      success = canvas.drawBmp(buffer, bytesRead, 0, 0);
-    }
-    else {
-      Serial.println("Unknown image format");
-      Serial.print("Magic bytes: ");
-      for (int i = 0; i < min((size_t)8, bytesRead); i++) {
-        Serial.printf("%02X ", buffer[i]);
-      }
-      Serial.println();
-    }
+  else {
+    Serial.println("Unknown image format from magic bytes");
   }
 
   free(buffer);
