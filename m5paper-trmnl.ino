@@ -3,15 +3,16 @@
 
 #include <HTTPClient.h> // Must be FIRST
 #include <WiFi.h>
+#include <esp_wifi.h>   
 #include <M5Unified.h>  // Includes M5GFX automatically
 #include <ArduinoJson.h>
 
-#define TRMNL_API_KEY "YOUR_TRMNL_API_KEY"
+#define TRMNL_API_KEY "11fyz3tBk1LVOqJgUb0I3g"
 #define M5PAPER_WAKE_BUTTON 39
 #define M5EPD_MAIN_PWR_PIN 2
 
-const char* WIFI_SSID = "network-name";
-const char* WIFI_PASS = "network-password";
+const char* WIFI_SSID = "DOK-C";
+const char* WIFI_PASS = "MolGF6131";
 
 M5Canvas canvas(&M5.Display);
 HTTPClient http;
@@ -52,21 +53,44 @@ void connectWiFi() {
   canvas.pushSprite(0, 0);
   M5.Display.display();
 
+  WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
+  
   unsigned long start = millis();
+  int retryCount = 0;
 
   while (WiFi.status() != WL_CONNECTED) {
-    if (millis() - start > 60000) {
-      Serial.println("\nWiFi failed; restarting...");
-      canvas.clear();
-      canvas.drawString("WiFi failed! Restarting...", 20, 20);
-      canvas.pushSprite(0, 0);
-      M5.Display.display();
-      delay(2000);
-      ESP.restart();
-    }
     delay(500);
     Serial.print(".");
+    
+    // Check for connection failure after just 5 seconds
+    if (millis() - start > 5000) {
+      if (WiFi.status() == WL_CONNECT_FAILED || WiFi.status() == WL_DISCONNECTED) {
+        retryCount++;
+        Serial.printf("\nConnection failed (status: %d), retry #%d\n", WiFi.status(), retryCount);
+        
+        if (retryCount > 3) {
+          Serial.println("Failed after 3 retries; restarting...");
+          canvas.clear();
+          canvas.drawString("WiFi failed! Restarting...", 20, 20);
+          canvas.pushSprite(0, 0);
+          M5.Display.display();
+          delay(2000);
+          ESP.restart();
+        }
+        
+        WiFi.disconnect();
+        delay(500);
+        WiFi.begin(WIFI_SSID, WIFI_PASS);
+        start = millis();  // Reset timer
+      }
+    }
+    
+    // Absolute timeout after 30 seconds
+    if (millis() - start > 30000) {
+      Serial.println("\nAbsolute timeout; restarting...");
+      ESP.restart();
+    }
   }
 
   Serial.println("\nWiFi connected!");
@@ -151,17 +175,17 @@ void displayImage(const char* imageUrl) {
 
   bool success = false;
 
-  // try PNG first (most common from TRMNL)
-  Serial.println("Trying to load as PNG...");
-  success = canvas.drawPngUrl(imageUrl, 0, 0);
+  // // try PNG first (most common from TRMNL)
+  // Serial.println("Trying to load as PNG...");
+  // success = canvas.drawPngUrl(imageUrl, 0, 0);
+
+  // if (!success) {
+  //   Serial.println("PNG load failed, trying BMP...");
+  //   success = canvas.drawBmpUrl(imageUrl);
+  // }
 
   if (!success) {
-    Serial.println("PNG load failed, trying BMP...");
-    success = canvas.drawBmpUrl(imageUrl);
-  }
-
-  if (!success) {
-    Serial.println("Direct URL methods failed, trying manual download...");
+    Serial.println("Manual image download...");
     success = downloadAndDisplayImage(imageUrl);
   }
 
@@ -192,14 +216,6 @@ bool downloadAndDisplayImage(const char* url) {
     http.end();
     return false;
   }
-
-  // Debug: Print ALL headers
-  Serial.println("=== Response Headers ===");
-  Serial.printf("Header count: %d\n", http.headers());
-  for (int i = 0; i < http.headers(); i++) {
-    Serial.printf("%s: %s\n", http.headerName(i).c_str(), http.header(i).c_str());
-  }
-  Serial.println("=======================");
 
   int len = http.getSize();
   Serial.printf("Content-Length from getSize(): %d\n", len);
@@ -308,9 +324,11 @@ void goToDeepSleep(int seconds) {
   esp_sleep_enable_timer_wakeup((uint64_t)seconds * 1000000ULL);
   esp_sleep_enable_ext0_wakeup((gpio_num_t)M5PAPER_WAKE_BUTTON, 0);  // wake on LOW
 
-  M5.Power.deepSleep(0);  // 0 = use ESP32's configured wake sources
+  Serial.flush();  // Make sure all serial output is sent before sleeping
+  delay(100);      // Give time for serial to flush
 
-  esp_deep_sleep_start();  // fallback
+  // Use ESP32 deep sleep directly instead of M5.Power.deepSleep()
+  esp_deep_sleep_start();
 }
 
 void loop() {
