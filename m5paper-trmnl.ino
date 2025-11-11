@@ -1,10 +1,9 @@
 // m5paper trmnl firmware
 // uses M5Unified (M5EPD is deprecated), supports PNG and BMP only
 
-#include <M5Unified.h>
+#include <HTTPClient.h> // Must be FIRST
 #include <WiFi.h>
-#include <HTTPClient.h>
-#include <M5GFX.h>
+#include <M5Unified.h>  // Includes M5GFX automatically
 #include <ArduinoJson.h>
 
 #define TRMNL_API_KEY "YOUR_TRMNL_API_KEY"
