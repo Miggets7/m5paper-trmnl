@@ -27,14 +27,12 @@ void setup() {
   M5.begin(cfg);
 
   M5.Display.setRotation(1);  // landscape mode (960x540)
-  M5.Display.clear();
   M5.Display.setEpdMode(epd_mode_t::epd_quality);
 
   setCpuFrequencyMhz(80);
   btStop();
 
   canvas.createSprite(960, 540);
-  canvas.setTextSize(2);
 
   pinMode(M5PAPER_WAKE_BUTTON, INPUT_PULLUP);
 
@@ -48,10 +46,6 @@ void setup() {
 
 void connectWiFi() {
   Serial.print("Connecting to WiFi...");
-  canvas.clear();
-  canvas.drawString("Connecting to WiFi...", 20, 20);
-  canvas.pushSprite(0, 0);
-  M5.Display.display();
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
@@ -71,10 +65,6 @@ void connectWiFi() {
         
         if (retryCount > 3) {
           Serial.println("Failed after 3 retries; restarting...");
-          canvas.clear();
-          canvas.drawString("WiFi failed! Restarting...", 20, 20);
-          canvas.pushSprite(0, 0);
-          M5.Display.display();
           delay(2000);
           ESP.restart();
         }
@@ -167,11 +157,6 @@ void fetchAndDisplay(float batteryVoltage) {
 
 void displayImage(const char* imageUrl) {
   Serial.println("Loading image...");
-  canvas.clear();
-
-  canvas.drawString("Loading image...", 20, 20);
-  canvas.pushSprite(0, 0);
-  M5.Display.display();
 
   bool success = false;
 
@@ -191,11 +176,6 @@ void displayImage(const char* imageUrl) {
 
   if (!success) {
     Serial.println("Image display failed!");
-    canvas.clear();
-    canvas.drawString("Failed to load image", 20, 20);
-    canvas.drawString("Check console for details", 20, 50);
-    canvas.pushSprite(0, 0);
-    M5.Display.display();
   } else {
     canvas.pushSprite(0, 0);
     M5.Display.display();
