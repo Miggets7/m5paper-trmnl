@@ -1,5 +1,23 @@
-// m5paper trmnl firmware
-// uses M5Unified (M5EPD is deprecated), supports PNG and BMP only
+/**
+ * M5Paper TRMNL Firmware
+ * 
+ * Fetches and displays images from TRMNL API on M5Paper e-ink display.
+ * Optimized for low power consumption with deep sleep between refreshes.
+ * 
+ * @author Miggets7
+ * @version 1.0.0
+ * @see https://docs.trmnl.com/go/diy/byod
+ * 
+ * Hardware: M5Paper (ESP32-based e-ink display)
+ * Display: 960x540 4.7" grayscale e-paper
+ * 
+ * Key features:
+ * - M5Unified library (modern, M5EPD deprecated)
+ * - RTC memory for refresh rate persistence
+ * - GPIO hold for power stability during deep sleep
+ * - Automatic WiFi reconnection
+ * - Battery voltage reporting to API
+ */
 
 #include <HTTPClient.h> // Must be FIRST
 #include <WiFi.h>
